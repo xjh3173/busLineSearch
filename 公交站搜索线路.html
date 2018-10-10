@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="UTF-8">
+	<title></title>
+
+    <style type="text/css">
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+        #query {
+            display: inline-block;
+            padding: 2px 8px;
+            background: #0bbde8;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+        #left{
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 300px;
+            height: 100%;
+            padding: 10px;
+            background-color: rgba(255, 255, 255, 0.8);
+            box-shadow: 0 0 10px 8px rgba(0, 0, 0, 0.3);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="map"></div>
+    <canvas id="canvas"></canvas>
+
+    <div id="left">
+        <input id="keyword" type="text" placeholder="请输入要查询的公交站点" />
+        <div id="query">查询</div>
+
+        <div id="l-result"></div><br/>
+        <p></p>
+        <div id="l-result2"></div>
+    </div>
+
+    <script src="https://cdn.bootcss.com/jquery/1.11.0/jquery.js"></script>
+    <script type="text/javascript" src="http://api.map.baidu.com/api?v=2.0&ak=E4805d16520de693a3fe707cdc962045"></script>
+    <script type="text/javascript" src="http://mapv.baidu.com/build/mapv.min.js"></script>
+
+    <script type="text/javascript">
+        var pointsArr = [];
+        var busStationArr  = [];
+        var markerArr  = [];
+        var bl;
+        // 百度地图API功能
+        var map = new BMap.Map("map");    // 创建Map实例
+        map.centerAndZoom(new BMap.Point(113.540467, 23.187918), 11);// 初始化地图,设置中心点坐标（经纬度/城市的名称）和地图级别
+        map.setCurrentCity("广州");// 设置地图显示的城市 此项是必须设置的
+        map.enableScrollWheelZoom(true); //开启鼠标滚轮缩放
+
+        var opts = {
+            width : 250,     // 信息窗口宽度
+            height: 100,     // 信息窗口高度
+            title : ""  // 信息窗口标题
+        }
+        var infoWindow = new BMap.InfoWindow("", opts);  // 创建信息窗口对象
+
+        $("#query").click(function () {
+            map.clearOverlays();
+            var keyword01 = document.getElementById('keyword').value + "公交车站";
+            new BMap.LocalSearch("广州", {
+                onSearchComplete: function(result) {
+                    var html = [];
+                    var n = 0;
+                    for (var i = 0; i < result.getCurrentNumPois(); i++) {
+                        var poi = result.getPoi(i);
+                        if (poi.type == BMAP_POI_TYPE_BUSSTOP) {
+                            html.push('<li><a href="javascript:void(0)" onclick="stationCli(\'' + poi.address + '\', \'' + poi.title + '\')">' +
+                                poi.title + '</a></li>');
+                            n++;
+                        }
+                    }
+                    var l_result = document.getElementById("l-result");
+                    if(n == 0){
+                        l_result.innerHTML = '没有与搜索条件匹配的项';
+                    }else{
+                        l_result.innerHTML = '<ul>' + html.join('') + '</ul>';
+                    }
+                }
+            }).search(keyword01);
+        });
+
+        var busutil = new BMap.BusLineSearch(map, {
+            renderOptions: {panel: "itemResult"},
+            onGetBusListComplete: function (buslist) {
+                curItemNo01 = 0;
+                busutil.getBusLine(buslist.getBusListItem(curItemNo01));
+            },
+            onGetBusLineComplete: function (busline) {
+                var polyline = new BMap.Polyline(busline.getPath(), {
+                    strokeColor: "#3333FF",
+                    strokeWeight: 5,
+                    strokeOpacity: 0.7,
+                });
+                map.clearOverlays();
+                map.addOverlay(polyline);
+                //添加站点Marker
+                showPolyline(busline);
+            },
+        })
+
+        function stationCli(address, title){
+            var busNames = address.split(';');
+            var html = [];
+            $('p').text('经过' + title + '线路');
+            for (i = 0; i < busNames.length; i++) {
+                //获得了所有的busName 把它写到div中
+                html.push('<li><a href="javascript:void(0)" onclick="subgo(\'' + busNames[i] + '\')">' +
+                    busNames[i] +
+                    '</a></li>');
+            }
+            var l_result2 = document.getElementById("l-result2");
+            l_result2.innerHTML = '<ul>' + html.join('') + '</ul>';
+        }
+
+        function subgo(itemNo) {
+            var busNo01 = itemNo;
+            busutil.getBusList(busNo01);
+        }
+
+        function showPolyline(busline) {
+            for (var i = 0; i < busline.getNumBusStations(); i++) {
+                var busStation = busline.getBusStation(i);
+                pointsArr[i] = busStation.position;
+                busStationArr[i] = busStation.name;
+                var index = 1;
+                var startMarkerIcon = new BMap.Icon("./img/start.png", new BMap.Size(25, 25), {
+                    imageSize:new BMap.Size(25, 25),
+                });
+                var endMarkerIcon = new BMap.Icon("./img/end.png", new BMap.Size(25, 25), {
+                    imageSize:new BMap.Size(25, 25),
+                });
+                var busStationIcon = new BMap.Icon("./img/stop.png", new BMap.Size(15, 15), {
+                    imageSize:new BMap.Size(15, 15),
+                });
+                var busStationFocusIcon = new BMap.Icon("./img/stop.png", new BMap.Size(20, 20), {
+                    imageSize:new BMap.Size(20, 20),
+                });
+                if (i == 0) {
+                    addCircle(i, busline, busStation, startMarkerIcon);
+                } else if (i == busline.getNumBusStations() - 1) {
+                    addCircle(i, busline, busStation, endMarkerIcon);
+                } else {
+//                    if (busStation.name == stationName) {
+//                        addCircle(i, busline, busStation, busStationFocusIcon);
+//                    } else {
+//                        addCircle(i, busline, busStation, busStationIcon);
+//                    }
+                    addCircle(i, busline, busStation, busStationIcon);
+                }
+            }
+            //设置地图的视野
+            map.setViewport(pointsArr);
+        }
+
+        function addCircle(index,busline, busStation, icon) {
+            var marker = new BMap.Marker(busStation.position, {icon: icon});
+            markerArr[index] = marker;
+            marker.setTitle(busStation.name);
+            marker.addEventListener("click", function (e) {
+                infoWindow.setTitle(busStation.name + " (" + busline.name + ")");
+                map.openInfoWindow(infoWindow, e.point);      // 打开信息窗口
+            });
+            map.addOverlay(marker);
+        }
+
+
+    </script>
+	
+</body>
+</html>
